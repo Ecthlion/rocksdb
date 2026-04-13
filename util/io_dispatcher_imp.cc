@@ -225,6 +225,15 @@ Status ReadSet::ReadIndex(size_t block_index, CachableEntry<Block>* out) {
   Status s = SyncRead(block_index);
   if (s.ok()) {
     *out = std::move(pinned_blocks_[block_index]);
+    // Release memory accounting for prefetched blocks. After moving the value
+    // out, ReleaseBlock() and the destructor check pinned_blocks_.GetValue()
+    // which will be null, so they won't release memory again.
+    if (block_index < block_sizes_.size() && block_sizes_[block_index] > 0) {
+      if (auto dispatcher_data = dispatcher_data_.lock()) {
+        dispatcher_data->ReleaseMemory(block_sizes_[block_index]);
+      }
+      block_sizes_[block_index] = 0;
+    }
     num_sync_reads_++;
   }
   return s;
